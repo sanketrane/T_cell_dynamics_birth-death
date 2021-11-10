@@ -1,0 +1,240 @@
+---
+title: 'GFP distribution: ontogeny data'
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(rstan)
+```
+
+#### GFP expression dynamics in naive CD4 and CD8 T cells.
+
+Data from Rag-GFP Ki67-RFP mice capturing the time course of expression of GFP within recently divided (Ki67$^\text{high}$) and non-divided (Ki67$^\text{low}$) naive CD4 and CD8 T cells.
+Proportions of GFP$^+$ cells within these specific subsets in spleen (red dots) and in lymph node (blue dots) completely overlap with each other.
+Further, GFP$^+$ fraction is almost absent in recently divided naive CD4 and CD8 T cells. 
+
+```{r echo=FALSE}
+#setwd("~/gfp_preds")
+WorkinDir <- getwd()
+DataDir <- file.path(WorkinDir, "datafiles")
+
+
+#### importing data for GFP positive proportions
+GFPposKineg_df <- readxl::read_excel(file.path(DataDir, "RagGFP_ontogeny_pooled.xlsx"), sheet = 3)%>%
+  select('mouseID', 'location', 'age', contains('nai'))
+GFPposKipos_df <- readxl::read_excel(file.path(DataDir, "RagGFP_ontogeny_pooled.xlsx"), sheet = 5)%>%
+  select('mouseID', 'location', 'age', contains('nai'))
+
+p1 <- ggplot()+
+  geom_point(data = GFPposKineg_df, aes(x=age, y=SP.4nai), col=2)+
+  geom_point(data = GFPposKineg_df, aes(x=age, y=LN.4nai), col=4)+
+  labs(x="Host age", y=NULL, title="GFP % in Ki67low naive CD4 T cells") +
+  ylim(0,100) #+ scale_y_log10(limits=c(0.3, 100))
+
+p2 <- ggplot()+
+  geom_point(data = GFPposKipos_df, aes(x=age, y=SP.4nai), col=2)+
+  geom_point(data = GFPposKipos_df, aes(x=age, y=LN.4nai), col=4)+
+  labs(x="Host age", y=NULL, title="GFP % in Ki67high naive CD4 T cells") +
+  ylim(0,100) #+ scale_y_log10(limits=c(0.3, 100))
+
+p3 <- ggplot()+
+  geom_point(data = GFPposKineg_df, aes(x=age, y=SP.8nai), col=2)+
+  geom_point(data = GFPposKineg_df, aes(x=age, y=LN.8nai), col=4)+
+  labs(x="Host age", y=NULL, title="GFP % in Ki67low naive CD8 T cells") +
+  ylim(0,100) #+ scale_y_log10(limits=c(0.3, 100))
+
+p4 <- ggplot()+
+  geom_point(data = GFPposKipos_df, aes(x=age, y=SP.8nai), col=2)+
+  geom_point(data = GFPposKipos_df, aes(x=age, y=LN.8nai), col=4)+
+  labs(x="Host age", y=NULL, title="GFP % in Ki67high naive CD8 T cells") +
+  ylim(0,100) #+ scale_y_log10(limits=c(0.3, 100))
+
+cowplot::plot_grid(p1, p2, p3, p4, nrow = 2)
+
+```
+
+
+### Age distriution of naive T cells in young mice.
+
+To explain the dynamics of naive T cells during the neonatal phase we extrapolated the $\delta$-varying and $\rho$-varying age-structured models back to the birth of the hosts. 
+In these PDE models, we track the distribution of cell ages within naive T cell population across the animal ages $N(a,t)$ as it evolves by the continuous influx of new cells of age 0 from the thymus and by the loss of preexisting cells within the population.
+We assume that the progeny of the dividing cells inherit the cell age from their parents.
+
+Predictions of the age distribution of naive CD4 T cells using the $\delta$-varying age structured model and the parameters estimated from its fit to the busulfn chimera data.
+
+```{r echo=FALSE, fig.height=4}
+Population <-  "cd4"
+ModelName <- "asm_deltavar"
+ModelDir <- file.path(WorkinDir, "stan_models", paste0("MAP_", ModelName, "_", Population, ".stan"))
+OutputDir <- file.path(WorkinDir, Population, ModelName)
+
+#### import the age structured model in R from stan for the simulations
+rstan::expose_stan_functions(ModelDir)
+
+#Importing fitted parameters
+ParamsFile <- read.csv(file.path(OutputDir, paste0("params_", Population, "_", ModelName, ".csv")))
+params <- ParamsFile$mean[1:4]
+
+### testing the model
+# age distribution from the stan model
+test1 <- Asm_total_age(age=1, time=100, parms=params)
+
+### Vectorising the stan derived age distrubution to work with in R
+G_age_psi <- function(age, Time, parms){
+  mapply(Asm_total_age, age=age, time=Time, MoreArgs = list(parms))
+}
+
+test2 <- G_age_psi(age=1, Time=100, parms=params)
+if(test1 != test2){
+  print("Error in vectorization of the age distribution")
+}
+
+# Normalised age distribution
+Norm_age_dist <- function(age, Time, parms){
+  G_age_psi(age, Time, parms)/
+    integrate(G_age_psi, lower = 0, upper = Time, Time=Time, parms=parms)$value
+}
+
+normage_df <- data.frame("Host_age_14" = G_age_psi(seq(0, 14, length.out = 100), 14, params),
+                         "Host_age_28" = G_age_psi(seq(0, 28, length.out = 100), 28, params),
+                         "Host_age_42" = G_age_psi(seq(0, 42, length.out = 100), 42, params),
+                         "Host_age_56" = G_age_psi(seq(0, 56, length.out = 100), 56, params),
+                         "Host_age_70" = G_age_psi(seq(0, 70, length.out = 100), 70, params))%>%
+  gather(key = "Host_age", value = "Counts") %>%
+  mutate("cell_age" = c(seq(0, 14, length.out = 100),
+                        seq(0, 28, length.out = 100),
+                        seq(0, 42, length.out = 100),
+                        seq(0, 56, length.out = 100),
+                        seq(0, 70, length.out = 100)))
+
+ggplot(normage_df) +
+  geom_point(aes(x=cell_age, y=Counts, col=Host_age), size=1.2) +
+  labs(x="cell age (days)", title = "Cell age distribution at varying host ages")+
+  scale_color_discrete(name="Host age", labels = c("2W", "4W", "6W", "8W", "10W"))+
+  scale_x_continuous(breaks = c(0, 14, 28, 42, 56, 70))
+
+
+```
+
+#### Transforming cell age distribution into the distribution of GFP intensities.
+We assume that GFP expression on naive T cells declines exponentially with the time since their thymic exit (_i.e._ cell age), since there is no residual RAG activity in peripheral T cell populations.
+Our analysis of busulfan chimera data (?and simulations of counts and Ki67 expression in neonates?) predicts extremely slow rate of cell division in naive T cells, which means that loss of GFP through cell division is minimal.
+Therefore, recently emigrated naive cells of age = 0 are assumed to have the highest GFP expression ($f_\text{max}$), which declines as $f(a) = f_\text{max} \, e^{-\gamma \, a}$.
+This direct correlation between cell age 'a' and GFP intensity 'f' can be used to recast the age distribution N(a, t) as,
+
+\begin{align}
+N(f,t) &= N(a,t) \, \bigg\lvert\frac{da}{df}\bigg\rvert \\
+&= N\bigg(\frac{ln f_\text{max} - ln f}{\gamma}, t \bigg) \, \frac{1}{\gamma \, f}; \\
+\end{align}
+
+We normalize GFP intensity by dividing it with the maximum observed fluorescence such that $f_\text{max} = 1$ and scan over the values of the GFP loss rate ($\gamma$) to  make predictions of the GFP distribution.
+
+
+
+```{r echo=FALSE, fig.height=4}
+
+par_gfp <- c(params, -2.7, 1)
+#### Deriving the GFP intensity distribution of naive T cells in neonates
+G_f_psi <- function(gfp, Time, parms){
+  gamma_gfp = exp(parms[5])
+  gfpmax = 1 #exp(parms[6])
+  
+  ## converting age density into GFP density using a jacobian
+  age = (log(gfpmax) - log(gfp))/gamma_gfp
+  value = G_age_psi(age, Time, parms)/(gamma_gfp * gfp)
+  
+  return("Gfp_freq" = value)
+}
+
+Norm_gfp_dist <- function(gfp, Time, parms){
+  gamma_gfp = exp(parms[5])
+  gfpmax = 1 #exp(parms[6])
+  gfpmin <- exp(-gamma_gfp * Time)
+  
+  value = G_f_psi(gfp, Time, parms)/
+    integrate(G_f_psi, lower = gfpmin, upper = gfpmax, Time=Time, parms=parms)$value
+  
+  return(value)
+}
+
+
+normgfp_df <- data.frame("Host_age_14" = Norm_gfp_dist(seq(exp(-exp(par_gfp[5])* 14), 1, length.out = 100), 14, par_gfp),
+                         "Host_age_28" = Norm_gfp_dist(seq(exp(-exp(par_gfp[5])* 28), 1, length.out = 100), 28, par_gfp),
+                         "Host_age_42" = Norm_gfp_dist(seq(exp(-exp(par_gfp[5])* 42), 1, length.out = 100), 42, par_gfp),
+                         "Host_age_56" = Norm_gfp_dist(seq(exp(-exp(par_gfp[5])* 56), 1, length.out = 100), 56, par_gfp),
+                         "Host_age_70" = Norm_gfp_dist(seq(exp(-exp(par_gfp[5])* 70), 1, length.out = 100), 70, par_gfp))%>%
+  gather(key = "Host_age", value = "Counts") %>%
+  mutate("gfp_intensity" = c(seq(exp(-exp(par_gfp[5])* 14), 1, length.out = 100),
+                             seq(exp(-exp(par_gfp[5])* 28), 1, length.out = 100),
+                             seq(exp(-exp(par_gfp[5])* 42), 1, length.out = 100),
+                             seq(exp(-exp(par_gfp[5])* 56), 1, length.out = 100),
+                             seq(exp(-exp(par_gfp[5])* 70), 1, length.out = 100)))
+
+ggplot(normgfp_df) +
+  geom_point(aes(x=gfp_intensity, y=Counts, col=Host_age), size=1.2) +
+  labs(x="GFP intensity", title = "Normalised GFP distribution at varying host ages")+
+  scale_color_discrete(name="Host age", labels = c("2W", "4W", "6W", "8W", "10W"))+
+  #scale_x_continuous(breaks = c(0, 14, 28, 42, 56, 70))+
+  #scale_x_reverse()+
+  scale_y_log10()
+
+```
+
+#### Calculating fraction of GFP$^+$ cells.
+Total number of naive T cells observed as GFP positive can then be estimated by integrating $N(f,t)$ from the threshold gfp intensity $\bar{f}$ to $f_\text{max} = 1.0$.
+At any host age, the lowest GFP intensity can be caculated using $\gamma$ such that $f_\text{min} = f_\text{max} e^{-\gamma \, t}.$
+Therefore, the fraction of GFPpostive cells in naive T cells can be derived as,
+
+$$
+Z(f, t) = \frac{\int_{\bar{f}}^1 N(f,t)}{\int_{f_\text{min}}^1 N(f,t) \, df}.
+$$
+Predictions of GFP fraction time-course using $\bar{f} = 0.3$ and the half life of GFP expression ~10 days _i.e._ $\gamma=0.067$.
+
+```{r echo=FALSE, fig.width=4, fig.height=3}
+
+## Calculating GFP fraction
+NofGFPpos <- function(Time, parms){
+  gfpmax = 1.0 #exp(parms[6])
+  gfp_gate = 0.3
+  
+  value <- c()
+  for (i in 1:length(Time)){
+    value[i] <- integrate(G_f_psi, lower = gfp_gate, upper = gfpmax, Time=Time[i], parms=parms)$value
+  }
+  return(value)
+}
+
+Noftotal <- function(Time, parms){
+  gamma_gfp = exp(parms[5])
+  gfpmax = 1.0 #exp(parms[6])
+  
+  value <- c()
+  for (i in 1:length(Time)){
+    gfpmin <- exp(-gamma_gfp * Time[i])
+    value[i] <- integrate(G_f_psi, lower = gfpmin, upper = gfpmax, Time=Time[i], parms=parms)$value
+  }
+  return(value)
+}
+
+GFPpos_frac <- function(Time, parms){
+  NofGFPpos(Time, parms)/Noftotal(Time, parms)
+}
+
+
+timeseq <- seq(1, 150, length.out = 100)
+GFP_frac <- GFPpos_frac(timeseq, par_gfp)
+ggplot()+
+  geom_point(aes(x=timeseq, y=GFP_frac), size=1.5)+
+  labs(x = "Host age (days)", y="Fraction of GFP positive cells")
+
+
+
+```
+
+
+
+

@@ -1,0 +1,18 @@
+#!/bin/bash
+
+### run scripts for all models in parallel
+
+Rscript rscripts/CHI_plots.R neutral cd4
+#Rscript rscripts/CHI_plots.R neutral cd8
+Rscript rscripts/CHI_plots.R lip cd4
+#Rscript rscripts/CHI_plots.R lip cd8
+Rscript rscripts/CHI_plots.R ddm cd4
+#Rscript rscripts/CHI_plots.R ddm cd8
+Rscript rscripts/CHI_plots.R rtem cd4
+#Rscript rscripts/CHI_plots.R rtem cd8
+Rscript rscripts/CHI_plots.R rtemld cd4
+#Rscript rscripts/CHI_plots.R rtemld cd8
+#Rscript rscripts/CHI_plots.R asm_deltavar cd4
+#Rscript rscripts/CHI_plots.R asm_deltavar cd8
+#Rscript rscripts/CHI_plots.R asm_rhovar cd4 
+#Rscript rscripts/CHI_plots.R asm_rhovar cd8 
