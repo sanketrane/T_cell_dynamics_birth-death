@@ -256,35 +256,35 @@ hostki_pred_bin3 <- as.data.frame(model_fit, pars = "hostki_pred3") %>%
   filter(timeseries >=5)
 
 
-kidonor_df <- data.frame("ageBMT_group1" = Y5pred_bin1$median,
+kihost_df <- data.frame("ageBMT_group1" = Y5pred_bin1$median,
                          "ageBMT_group2" = Y5pred_bin2$median,
                          "ageBMT_group3" = Y5pred_bin3$median) %>%
-  gather(key = ageBMTbin, value = donor_ki) 
+  gather(key = ageBMTbin, value = host_ki) 
 
-kihost_df <- data.frame("ageBMT_group1" = Y6pred_bin1$median, 
+kidonor_df <- data.frame("ageBMT_group1" = Y6pred_bin1$median, 
                         "ageBMT_group2" = Y6pred_bin1$median, 
                         "ageBMT_group3" = Y6pred_bin1$median) %>%
-  gather(key = ageBMTbin, value = host_ki)
+  gather(key = ageBMTbin, value = donor_ki)
 
-kidonor_lb <- data.frame("ageBMT_group1" = Y5pred_bin1$lb,
+kihost_lb <- data.frame("ageBMT_group1" = Y5pred_bin1$lb,
                          "ageBMT_group2" = Y5pred_bin2$lb,
                          "ageBMT_group3" = Y5pred_bin3$lb) %>%
-  gather(key = ageBMTbin, value = donor_ki) 
+  gather(key = ageBMTbin, value = host_ki) 
 
-kihost_lb <- data.frame("ageBMT_group1" = Y6pred_bin1$lb, 
+kidonor_lb <- data.frame("ageBMT_group1" = Y6pred_bin1$lb, 
                         "ageBMT_group2" = Y6pred_bin1$lb, 
                         "ageBMT_group3" = Y6pred_bin1$lb) %>%
-  gather(key = ageBMTbin, value = host_ki)
+  gather(key = ageBMTbin, value = donor_ki)
 
-kidonor_ub <- data.frame("ageBMT_group1" = Y5pred_bin1$ub,
+kihost_ub <- data.frame("ageBMT_group1" = Y5pred_bin1$ub,
                          "ageBMT_group2" = Y5pred_bin2$ub,
                          "ageBMT_group3" = Y5pred_bin3$ub) %>%
-  gather(key = ageBMTbin, value = donor_ki) 
+  gather(key = ageBMTbin, value = host_ki) 
 
-kihost_ub <- data.frame("ageBMT_group1" = Y6pred_bin1$ub, 
+kidonor_ub <- data.frame("ageBMT_group1" = Y6pred_bin1$ub, 
                         "ageBMT_group2" = Y6pred_bin1$ub, 
                         "ageBMT_group3" = Y6pred_bin1$ub) %>%
-  gather(key = ageBMTbin, value = host_ki)
+  gather(key = ageBMTbin, value = donor_ki)
 
 ki_pred_lb <- data.frame("ageBMTbin"= kidonor_lb$ageBMTbin,
                          "Donor" = kidonor_lb$donor_ki,

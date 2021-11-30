@@ -62,7 +62,7 @@ functions{
     return value;
   }
 
-  real Chi_spline( real time) {
+  real Chi_spline(real time) {
     // chiEst is the level if stabilised chimerism in the source compartment
     // qEst is the rate with which cimerism chnages in the source compartment
     real chi;
@@ -76,6 +76,7 @@ functions{
     }
     return chi;
   }
+
 
   // influx of donor cells into the naive donor T cell compartment from the thymus (cells/day)
   real theta_donor(real time, real[] parms){
@@ -98,14 +99,11 @@ functions{
     real k_bar = 1/exp(1.0);
     real value;
     real t0 = 1.0;
-    real r_ki_theta = 0.9;     // thresold ki intensity within the thymic cohort below
 
     if(ki >= 0 && ki < k_bar){
       value = (1 - eps_spline(time))/k_bar;
-    } else if(ki >= k_bar && ki < r_ki_theta) {
-      value = 0.0;
-    } else if (ki >= r_ki_theta && ki <= 1.0){
-      value = (eps_spline(time)/(1 - r_ki_theta));
+    } else if (ki >= k_bar && ki <= 1.0){
+      value = (eps_spline(time)/(1 - k_bar));
     } else {
       value = 0.0;
     }
@@ -115,13 +113,24 @@ functions{
   //  Ki67 distribution of cells exisiting in the periphery at t0
   real ki_dist_init(real ki){
     real value;
-    real r_ki_init  = 3.0;         // parameter that shapes ki distribution within the init cohort
+    real r_ki_init  = 1;         // parameter that shapes ki distribution within the init cohort
 
     if(ki >= 0.0 && ki <= 1.0){
-      value = exp(ki * r_ki_init)/((exp(r_ki_init) - 1)/r_ki_init);
+      value = exp(-ki * r_ki_init)/((1 - exp(-r_ki_init))/r_ki_init);
     }  else {
       value = 0.0;
     }
+    return value;
+  }
+
+  // rate of cell division depending on cell age
+  real lambda_age(real age, real[] parms){
+    real delta = parms[2];
+    real rho0  = parms[3];
+    real r_rho = parms[4];
+
+    real value  = delta - rho0 * exp(r_rho * age);
+
     return value;
   }
 
@@ -752,10 +761,6 @@ functions{
     int dat_t0 = x_i[1];                          // time zero -- for chimeras age at BMT
 
     //PDE solution
-    real ont_counts_mean[n];
-    real ont_ki_counts[n];
-    real ont_kiprop_mean;
-
     real chi_counts_mean[n];
     real host_counts_mean[n];
     real donor_counts_mean[n];
@@ -766,79 +771,65 @@ functions{
 
     vector[4*n] y_mean_stacked;
     // each shard has a single datpoint so its unique ****
-    // deciding whether the unique data point is either from ontogeny or chimera dataset!
-    if (dat_t0 == 1){
-      // PDE solution for ontogeny dataset --  x_r = data time
-      ont_counts_mean = N_total_time(x_r, to_array_1d(global_params));
-      ont_ki_counts = U_total_time(x_r, to_array_1d(global_params));
-      ont_kiprop_mean = ont_ki_counts[1]/ont_counts_mean[1];
-      y_mean_stacked[1] = ont_counts_mean[1];
-      y_mean_stacked[2] = ont_kiprop_mean;
-      y_mean_stacked[3] = 0;
-      y_mean_stacked[4] = 0;
-    } else {
-      // PDE solution for chimera dataset -- x_r = data time and x_i = time at BMT
-      chi_counts_mean = N_pooled_time(x_r,  to_array_1d(to_vector(x_i)/1.0), to_array_1d(global_params));
-      host_counts_mean = N_host_time(x_r, to_array_1d(to_vector(x_i)/1.0), to_array_1d(global_params));
-      donor_counts_mean = N_donor_time(x_r, to_array_1d(to_vector(x_i)/1.0), to_array_1d(global_params));
-      host_ki_counts = U_host_time(x_r,  to_array_1d(to_vector(x_i)/1.0), to_array_1d(global_params));
-      host_ki_mean = host_ki_counts[1]/host_counts_mean[1];
-      donor_ki_counts = U_donor_time(x_r,  to_array_1d(to_vector(x_i)/1.0), to_array_1d(global_params));
-      donor_ki_mean = donor_ki_counts[1]/donor_counts_mean[1];
-      y_mean_stacked[1] = chi_counts_mean[1];
-      y_mean_stacked[2] = donor_counts_mean[1]/(chi_counts_mean[1] * Chi_spline(x_r[1] - (x_i[1]/1.0)));
-      y_mean_stacked[3] = host_ki_mean;
-      y_mean_stacked[4] = donor_ki_mean;
-    }
+    // PDE solution for chimera dataset -- x_r = data time and x_i = time at BMT
+    chi_counts_mean = N_pooled_time(x_r,  to_array_1d(to_vector(x_i)/1.0), to_array_1d(global_params));
+    host_counts_mean = N_host_time(x_r, to_array_1d(to_vector(x_i)/1.0), to_array_1d(global_params));
+    donor_counts_mean = N_donor_time(x_r, to_array_1d(to_vector(x_i)/1.0), to_array_1d(global_params));
+    host_ki_counts = U_host_time(x_r,  to_array_1d(to_vector(x_i)/1.0), to_array_1d(global_params));
+    host_ki_mean = host_ki_counts[1]/host_counts_mean[1];
+    donor_ki_counts = U_donor_time(x_r,  to_array_1d(to_vector(x_i)/1.0), to_array_1d(global_params));
+    donor_ki_mean = donor_ki_counts[1]/donor_counts_mean[1];
+    y_mean_stacked[1] = chi_counts_mean[1];
+    y_mean_stacked[2] = donor_counts_mean[1]/(chi_counts_mean[1] * Chi_spline(x_r[1] - (x_i[1]/1.0)));
+    y_mean_stacked[3] = host_ki_mean;
+    y_mean_stacked[4] = donor_ki_mean;
 
     return y_mean_stacked;
   }
 
   // functions for transformation of fractions in (0,a), where a >=1
-  real[] asinsqrt_array(real[] x){
-    int ndims = size(x);
-    real answer[ndims];
-    real a = 1.2;
-
-    for (i in 1: ndims){
-      answer[i] = asin(sqrt(x[i])/sqrt(a));
-    }
-    return answer;
-  }
-
-  real asinsqrt_real(real x){
-    real a = 1.2;
-
-    real answer = asin(sqrt(x)/sqrt(a));
-    return answer;
-  }
-
-  real asinsqrt_inv(real x){
-    real a = 1.2;
-
-    real answer = a * (sin(x))^2;
-    return answer;
-  }
-
-  // functions for transformation of fractions in (0,a), where a >=1
   real logit_inverse(real x){
      real ans;
-       ans = exp(x)/(1+exp(x));
-       return ans;
-  }
+
+     ans = exp(x)/(1+exp(x));
+
+     return ans;
+   }
+
+   // functions for transformation of fractions in (0,a), where a >=1
+   real[] asinsqrt_array(real[] x){
+     int ndims = size(x);
+     real answer[ndims];
+     real a = 1.2;
+
+     for (i in 1: ndims){
+       answer[i] = asin(sqrt(x[i])/sqrt(a));
+     }
+     return answer;
+   }
+
+   real asinsqrt_real(real x){
+     real a = 1.2;
+
+     real answer = asin(sqrt(x)/sqrt(a));
+     return answer;
+   }
+
+   real asinsqrt_inv(real x){
+     real a = 1.2;
+
+     real answer = a * (sin(x))^2;
+     return answer;
+   }
 }
 
 data{
-  int<lower = 1> numOnt;
-  real<lower = 0> ont_counts[numOnt];
-  real<lower = 0> ont_ki[numOnt];
   int<lower = 1> numChi;
   real<lower = 0> chi_counts[numChi];
   real<lower = 0> N_donor_fraction[numChi];
   real<lower = 0> donor_ki[numChi];
   real<lower = 0> host_ki[numChi];
   int<lower  = 1> numPred;
-  real<lower = 0> ts_pred_ont[numPred];
   real<lower = 0> ts_pred_chi1[numPred];
   real<lower = 0> ts_pred_chi2[numPred];
   real<lower = 0> ts_pred_chi3[numPred];
@@ -865,12 +856,11 @@ transformed data{
 }
 
 parameters{
-  real<lower=1E4, upper=2E6> N0;                  // total cells counts at t0
-  real<lower=0.001, upper=0.5> delta;
-  real<lower=0.001, upper=0.5> rho;
+  real<lower=1E5, upper=2E6> N0;                  // total cells counts at t0
+  real<lower=0.0, upper=1.0> delta0;
+  real<lower=0.0, upper=delta0> rho;
   real r_del;
-  real<lower=0> sigma_ont_counts;
-  real<lower=0> sigma_ont_ki;
+
   real<lower=0> sigma_chi_counts;
   real<lower=0> sigma_Nfd;
   real<lower=0> sigma_donor_ki;
@@ -878,74 +868,58 @@ parameters{
 }
 
 transformed parameters{
-  vector[6] global_params;
-  vector[numOnt] y1_mean;               // PDE prediction for counts from ontogeny data
-  vector[numOnt] y2_mean;               // PDE prediction for ki prop from ontogeny data
-  vector[numChi] y3_mean;               // PDE prediction for counts from chimera data
-  vector[numChi] y4_mean;               // PDE prediction for Nfd from chimera data
-  vector[numChi] y5_mean;               // PDE prediction for ki proportions in donor compartment from chimera data
-  vector[numChi] y6_mean;               // PDE prediction for ki proportions in host compartment from chimera data
-  vector[(4*numOnt)+(4*numChi)] y_mean_stacked;        // compliled output across all nodes
+  vector[4] global_params;
+  vector[numChi] y3_mean;                   // PDE prediction for counts from chimera data
+  vector[numChi] y4_mean;                   // PDE prediction for Nfd from chimera data
+  vector[numChi] y5_mean;                   // PDE prediction for ki proportions in donor compartment from chimera data
+  vector[numChi] y6_mean;                   // PDE prediction for ki proportions in host compartment from chimera data
+  vector[(4*numChi)] y_mean_stacked;        // compliled output across all nodes
 
   global_params[1] = N0;
-  global_params[2] = delta;
+  global_params[2] = delta0;
   global_params[3] = rho;
   global_params[4] = r_del;
 
   // combining the output from all the shards
   y_mean_stacked = map_rect(math_reduce, global_params, local_params, x_r, x_i);
 
-  for (i in 1:numOnt){
-    y1_mean[i] = y_mean_stacked[4*i - 3];
-    y2_mean[i] = y_mean_stacked[4*i - 2];
-  }
-
   for (i in 1:numChi){
-    y3_mean[i] = y_mean_stacked[(4*numOnt)+ 4*i - 3];
-    y4_mean[i] = y_mean_stacked[(4*numOnt)+ 4*i - 2];
-    y5_mean[i] = y_mean_stacked[(4*numOnt)+ 4*i - 1];
-    y6_mean[i] = y_mean_stacked[(4*numOnt)+ 4*i];
+    y3_mean[i] = y_mean_stacked[4*i - 3];
+    y4_mean[i] = y_mean_stacked[4*i - 2];
+    y5_mean[i] = y_mean_stacked[4*i - 1];
+    y6_mean[i] = y_mean_stacked[4*i];
   }
 }
 
 model{
   N0 ~ normal(5E5, 1.5E5);
-  delta ~ normal(0.05, 0.2);
-  rho ~ normal(0.005, 0.2);
-  r_del ~ normal(0.0, 0.2);
+  delta0 ~ normal(0.04, 0.2);
+  rho ~ normal(0.01, 0.2);
+  r_del ~ normal(0.01, 0.05);
 
-  sigma_ont_counts ~ normal(0, 2);
-  sigma_ont_ki ~ normal(0, 2);
   sigma_chi_counts ~ normal(0, 2);
   sigma_Nfd ~ normal(0, 2);
   sigma_donor_ki ~ normal(0, 2);
   sigma_host_ki ~ normal(0, 2);
 
-  log(ont_counts) ~ normal(log(y1_mean), sigma_ont_counts);
-  asinsqrt_array(ont_ki) ~ normal(asinsqrt_array(to_array_1d(y2_mean)), sigma_ont_ki);
-
   log(chi_counts) ~ normal(log(y3_mean), sigma_chi_counts);
   logit(N_donor_fraction) ~ normal(logit(to_array_1d(y4_mean)), sigma_Nfd);
-  asinsqrt_array(donor_ki) ~ normal(asinsqrt_array(to_array_1d(y5_mean)), sigma_donor_ki);
-  asinsqrt_array(host_ki) ~ normal(asinsqrt_array(to_array_1d(y6_mean)), sigma_host_ki);
-  }
+  asinsqrt_array(host_ki) ~ normal(asinsqrt_array(to_array_1d(y5_mean)), sigma_host_ki);
+  asinsqrt_array(donor_ki) ~ normal(asinsqrt_array(to_array_1d(y6_mean)), sigma_donor_ki);
+}
 
-  generated quantities{
-  real y_ont_pred[numPred, 2];
+generated quantities{
   real y_chi_pred1[numPred, 4];
   real y_chi_pred2[numPred, 4];
   real y_chi_pred3[numPred, 4];
 
-  real y1_mean_pred[numPred];  real y2_mean_pred[numPred];
-  real ontcounts_pred[numPred];   real ontki_pred[numPred]; real ont_ki_counts_pred[numPred];
+  real y3_mean_pred1[numPred];  real y4_mean_pred1[numPred];  real y5_mean_pred1[numPred];  real y6_mean_pred1[numPred];
+  real y3_mean_pred2[numPred];  real y4_mean_pred2[numPred];  real y5_mean_pred2[numPred];  real y6_mean_pred2[numPred];
+  real y3_mean_pred3[numPred];  real y4_mean_pred3[numPred];  real y5_mean_pred3[numPred];  real y6_mean_pred3[numPred];
 
-  real y3_mean_pred1[numPred];  real y4_mean_pred1[numPred]; real y5_mean_pred1[numPred];  real y6_mean_pred1[numPred];
-  real y3_mean_pred2[numPred];  real y4_mean_pred2[numPred]; real y5_mean_pred2[numPred];  real y6_mean_pred2[numPred];
-  real y3_mean_pred3[numPred];  real y4_mean_pred3[numPred]; real y5_mean_pred3[numPred];  real y6_mean_pred3[numPred];
-
-  real chicounts_pred1[numPred]; real Nfd_pred1[numPred]; real donorki_pred1[numPred]; real hostki_pred1[numPred];
-  real chicounts_pred2[numPred]; real Nfd_pred2[numPred]; real donorki_pred2[numPred]; real hostki_pred2[numPred];
-  real chicounts_pred3[numPred]; real Nfd_pred3[numPred]; real donorki_pred3[numPred]; real hostki_pred3[numPred];
+  real chicounts_pred1[numPred];  real Nfd_pred1[numPred]; real donorki_pred1[numPred]; real hostki_pred1[numPred];
+  real chicounts_pred2[numPred];  real Nfd_pred2[numPred]; real donorki_pred2[numPred]; real hostki_pred2[numPred];
+  real chicounts_pred3[numPred];  real Nfd_pred3[numPred]; real donorki_pred3[numPred]; real hostki_pred3[numPred];
 
   real host_counts_pred1[numPred]; real host_counts_pred2[numPred];  real host_counts_pred3[numPred];
   real donor_counts_pred1[numPred]; real donor_counts_pred2[numPred];  real donor_counts_pred3[numPred];
@@ -953,19 +927,12 @@ model{
   real host_ki_pred1[numPred]; real host_ki_pred2[numPred];  real host_ki_pred3[numPred];
   real donor_ki_pred1[numPred]; real donor_ki_pred2[numPred];  real donor_ki_pred3[numPred];
 
-
-  // log likelihoods
-  vector[numOnt] log_lik_ont_counts;
-  vector[numOnt] log_lik_ont_ki;
   vector[numChi] log_lik_chi_counts;
   vector[numChi] log_lik_Nfd;
   vector[numChi] log_lik_donor_ki;
   vector[numChi] log_lik_host_ki;
 
   // PDE solution -- predictions for total counts, Nfd, donor_ki, host_ki
-  y1_mean_pred = N_total_time(ts_pred_ont, to_array_1d(global_params));
-  ont_ki_counts_pred = U_total_time(ts_pred_ont, to_array_1d(global_params));
-
   y3_mean_pred1 = N_pooled_time(ts_pred_chi1,  tb_pred1, to_array_1d(global_params));
   y3_mean_pred2 = N_pooled_time(ts_pred_chi2,  tb_pred2, to_array_1d(global_params));
   y3_mean_pred3 = N_pooled_time(ts_pred_chi3,  tb_pred3, to_array_1d(global_params));
@@ -988,11 +955,6 @@ model{
 
 
   for (i in 1:numPred){
-    ontcounts_pred[i] = exp(normal_rng(log(y1_mean_pred[i]), sigma_ont_counts));
-
-    y2_mean_pred[i] = ont_ki_counts_pred[i]/y1_mean_pred[i];
-    ontki_pred[i] = asinsqrt_inv(normal_rng(asinsqrt_real(y2_mean_pred[i]), sigma_ont_ki));
-
     y4_mean_pred1[i] = donor_counts_pred1[i]/(y3_mean_pred1[i] * Chi_spline(ts_pred_chi1[i] - 54));
     y4_mean_pred2[i] = donor_counts_pred2[i]/(y3_mean_pred2[i] * Chi_spline(ts_pred_chi2[i] - 71));
     y4_mean_pred3[i] = donor_counts_pred3[i]/(y3_mean_pred3[i] * Chi_spline(ts_pred_chi3[i] - 97));
@@ -1013,26 +975,20 @@ model{
     Nfd_pred2[i] = logit_inverse(normal_rng(logit(y4_mean_pred2[i]), sigma_Nfd));
     Nfd_pred3[i] = logit_inverse(normal_rng(logit(y4_mean_pred3[i]), sigma_Nfd));
 
-    donorki_pred1[i] = asinsqrt_inv(normal_rng(asinsqrt_real(y5_mean_pred1[i]), sigma_donor_ki));
-    donorki_pred2[i] = asinsqrt_inv(normal_rng(asinsqrt_real(y5_mean_pred2[i]), sigma_donor_ki));
-    donorki_pred3[i] = asinsqrt_inv(normal_rng(asinsqrt_real(y5_mean_pred3[i]), sigma_donor_ki));
+    donorki_pred1[i] = asinsqrt_inv(normal_rng(asinsqrt_real(y6_mean_pred1[i]), sigma_donor_ki));
+    donorki_pred2[i] = asinsqrt_inv(normal_rng(asinsqrt_real(y6_mean_pred2[i]), sigma_donor_ki));
+    donorki_pred3[i] = asinsqrt_inv(normal_rng(asinsqrt_real(y6_mean_pred3[i]), sigma_donor_ki));
 
-    hostki_pred1[i] = asinsqrt_inv(normal_rng(asinsqrt_real(y6_mean_pred1[i]), sigma_host_ki));
-    hostki_pred2[i] = asinsqrt_inv(normal_rng(asinsqrt_real(y6_mean_pred2[i]), sigma_host_ki));
-    hostki_pred3[i] = asinsqrt_inv(normal_rng(asinsqrt_real(y6_mean_pred3[i]), sigma_host_ki));
-  }
-
-  // calculating log likelihoods
-  for (i in 1:numOnt) {
-    log_lik_ont_counts[i] = normal_lpdf(log(ont_counts[i]) | log(y1_mean[i]), sigma_ont_counts);
-    log_lik_ont_ki[i]     = normal_lpdf(asinsqrt_real(ont_ki[i]) | asinsqrt_real(y2_mean[i]), sigma_ont_ki);
+    hostki_pred1[i] = asinsqrt_inv(normal_rng(asinsqrt_real(y5_mean_pred1[i]), sigma_host_ki));
+    hostki_pred2[i] = asinsqrt_inv(normal_rng(asinsqrt_real(y5_mean_pred2[i]), sigma_host_ki));
+    hostki_pred3[i] = asinsqrt_inv(normal_rng(asinsqrt_real(y5_mean_pred3[i]), sigma_host_ki));
   }
 
   // calculating log likelihoods
   for (i in 1:numChi) {
     log_lik_chi_counts[i] = normal_lpdf(log(chi_counts[i]) | log(y3_mean[i]), sigma_chi_counts);
     log_lik_Nfd[i]        = normal_lpdf(logit(N_donor_fraction[i]) | logit(y4_mean[i]), sigma_Nfd);
-    log_lik_donor_ki[i]   = normal_lpdf(asinsqrt_real(donor_ki[i]) | asinsqrt_real(y5_mean[i]), sigma_donor_ki);
-    log_lik_host_ki[i]    = normal_lpdf(asinsqrt_real(host_ki[i]) | asinsqrt_real(y6_mean[i]), sigma_host_ki);
+    log_lik_host_ki[i]    = normal_lpdf(asinsqrt_real(host_ki[i]) | asinsqrt_real(y5_mean[i]), sigma_host_ki);
+    log_lik_donor_ki[i]   = normal_lpdf(asinsqrt_real(donor_ki[i]) | asinsqrt_real(y6_mean[i]), sigma_donor_ki);
   }
-  }
+}

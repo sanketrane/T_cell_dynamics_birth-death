@@ -66,8 +66,8 @@ tb_pred3 <- rep(97, 300)
 numPred <- length(ts_pred_chi1)
 numOnt <- length(data_time_ont)
 numChi <- length(data_time_chi)
-dat_t0 <- c(tb_chi)
-dat_time <- c(data_time_chi)
+dat_t0 <- c(rep(1, length(data_time_ont)), tb_chi)
+dat_time <- c(data_time_ont, data_time_chi)
 numObs <- length(dat_time)
 
 for (n_shards in c(145)) {
@@ -78,22 +78,6 @@ for (n_shards in c(145)) {
              file = file.path('datafiles', paste0(Population, '_data_s', n_shards,".Rdump")))
 } 
 
-stip_cou(0)
-
-###
-
-ggplot()+
-  geom_point(aes(x=data_time_chi, y=chi_counts))+
-  scale_y_log10()
-
-ggplot()+
-  geom_point(aes(x=data_time_ont, y=ont_ki * 100))+
-  geom_point(data = filter(data_fit, total_counts > 3e7),
-             aes(x=age.at.S1K, y=total_kiprop * 100), col=2) +
-  scale_y_log10(limits = c(0.3, 100))
-
-
-stop_lone()
 
 #######
 Population <-  'cd8'
@@ -163,44 +147,26 @@ ggplot()+
 
 
 rstan::expose_stan_functions("stan_models/neutral_cd4.stan")
-rstan::expose_stan_functions("stan_models/only_chimera/MAP_asm_cd4.stan")
-params <- c(3.379977e+05, 4.392640e-02, 8.346051e-03)
+rstan::expose_stan_functions("stan_models/Full_chimera/MAP_asm_deltavar_cd4.stan")
+params <- c(336198.622, 0.044876653, 0.00175962206, 0.00750808754)
 theta <- c(0)
 x_i <- c(dat_t0[100])
 x_r <- c(dat_time[100])
 math_reduce(params, theta, x_r, x_i)
 
-dat_time <- c(ts_pred_ont, ts_pred_chi1)
-dat_t0 <- c(rep(1, length(ts_pred_ont)), tb_pred1)
-numOnt <- length(ts_pred_ont)
-numChi <- length(ts_pred_chi1)
+dat_time <- c(data_time_ont, data_time_chi)
+dat_t0 <- c(rep(1, length(data_time_ont)), tb_chi)
+numOnt <- length(data_time_ont)
+numChi <- length(data_time_chi)
 
-logit <- function(x){log(x/(1-x))}
+logit_transf <- function(x){log(x/(1-x))}
 
 artf_dat <- data.frame()
 artf_dat <- data.frame("x"= math_reduce(params, theta, dat_time[1], dat_t0[1]))
 for (i in 1:length(dat_time)) {
   artf_dat[, i] = data.frame("x"=math_reduce(params, theta, dat_time[i], dat_t0[i]))
 }
-artf_df <- data.frame(t(artf_dat)) %>%
-  mutate(resid_counts = log(X1) - log(chimera_data$total_counts),
-         resid_nfd = logit(X2) - logit(chimera_data$Nfd),
-         host_age = chimera_data$age.at.S1K
-  )
-
-
-ggplot(artf_df) +
-  geom_point(aes(x = host_age, y = resid_counts))
-
-ggplot(artf_df) +
-  geom_point(aes(x = host_age, y = resid_nfd))
-
-ggplot(artf_df) +
-  geom_point(aes(x = host_age, y = logit(X2)))
-
-
-ggplot(artf_df) +
-  geom_point(aes(x = host_age, y = asin(sqrt((X2)))))
+artf_df <- data.frame(t(artf_dat)) 
 
 y1_mean <- c()
 y2_mean <- c()
@@ -211,15 +177,15 @@ y6_mean <- c()
 
 set.seed(1357)
 for (i in 1:numOnt){
-  y1_mean[i] = artf_df[i, 1] + rnorm(1, 1e6, 1e6)
+  y1_mean[i] = artf_df[i, 1] + rnorm(1, 4e5, 4e5)
   y2_mean[i] = artf_df[i, 2] + rnorm(1, 0.02, 0.02)
 }
 
 for (i in 1:numChi){
-  y3_mean[i] = artf_df[numOnt + i, 1] + rnorm(1, 5e5, 5e5)
-  y4_mean[i] = artf_df[numOnt + i, 2] + rnorm(1, 0.01, 0.01)
-  y5_mean[i] = artf_df[numOnt + i, 3] + rnorm(1, 0.02, 0.02)
-  y6_mean[i] = artf_df[numOnt + i, 4] + rnorm(1, 0.04, 0.04)
+  y3_mean[i] = artf_df[numOnt + i, 1] + rnorm(1, 3e5, 3e5)
+  y4_mean[i] = artf_df[numOnt + i, 2] + rnorm(1, 0.012, 0.012)
+  y5_mean[i] = artf_df[numOnt + i, 3] + rnorm(1, 0.01, 0.01)
+  y6_mean[i] = artf_df[numOnt + i, 4] + rnorm(1, 0.012, 0.012)
 }
 
 ggplot()+
@@ -232,7 +198,7 @@ ggplot()+
   geom_point(aes(x = dat_time[(1+numOnt):(numChi+numOnt)], y = log(y3_mean)))
 
 ggplot()+
-  geom_point(aes(x = dat_time[(1+numOnt):(numChi+numOnt)], y = asinsqrt_array(y4_mean)))
+  geom_point(aes(x = dat_time[(1+numOnt):(numChi+numOnt)], y = logit_transf(y4_mean)))
 
 ggplot()+
   geom_point(aes(x = dat_time[(1+numOnt):(numChi+numOnt)], y = asinsqrt_array(y5_mean)))+
@@ -249,12 +215,12 @@ N_donor_fraction <- y4_mean
 donor_ki <- y6_mean
 host_ki <- y5_mean
 
-for (n_shards in c(25)) {
+for (n_shards in c(numOnt + numChi)) {
   stan_rdump(c("numOnt",  "ont_ki", "ont_counts", 
-               "numChi", #"chi_counts",  "N_donor_fraction", "donor_ki", "host_ki",
+               "numChi", "chi_counts",  "N_donor_fraction", "donor_ki", "host_ki",
                "ts_pred_ont", "ts_pred_chi1", "ts_pred_chi2", "ts_pred_chi3",
                "tb_pred1", "tb_pred2", "tb_pred3", "numPred", "n_shards", "dat_time", "dat_t0"),
-             file = file.path('datafiles', paste0(Population, '_data_s', n_shards,".Rdump")))
+             file = file.path('datafiles', paste0(Population, '_ARTFdata_s', n_shards,".Rdump")))
 } 
 
 

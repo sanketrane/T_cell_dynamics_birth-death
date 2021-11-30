@@ -17,7 +17,7 @@ do
 done
 
 
-echo "stan_models/full_chimera/MAP_${modelname} sample num_samples=500 num_warmup=300 data file=datafiles/cd4_data_s128.Rdump output file=output_csv/full_chimera/${modelname}.csv";
-mpirun -vvvv stan_models/Full_chimera/MAP_${modelname} sample num_samples=500 num_warmup=300 data file=datafiles/cd4_data_s128.Rdump output file=output_csv/Full_chimera/${modelname}.csv
+echo "stan_models/full_chimera/MAP_${modelname} sample num_samples=500 num_warmup=300 data file=datafiles/cd4_data_s128.Rdump output file=output_csv/full_chimera/ARTF_${modelname}.csv";
+mpirun -vvvv stan_models/Full_chimera/MAP_${modelname} sample num_samples=500 num_warmup=300 data file=datafiles/cd4_data_s128.Rdump output file=output_csv/Full_chimera/ARTF_${modelname}.csv
 
 
